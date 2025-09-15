@@ -41,7 +41,6 @@ CRITICAL: If the query is outside the domain of financial compliance (e.g., abou
 Do not include any other text, commentary, or chain-of-thought outside the JSON object.
 """
 
-
 # Prompt for the critic to decide if retrieval is needed
 CRITIC_RETRIEVE_PROMPT = """
 You are a strict gatekeeper for a financial compliance RAG system. Your sole purpose is to decide if a query is about the topics in our knowledge base.
@@ -66,7 +65,6 @@ Example Output for a sports query: {{"retrieve": false, "notes": "Query is about
 Example Output for a finance query: {{"retrieve": true, "notes": "Query is about specific capital requirements, which is within the financial compliance domain."}}
 """
 
-
 # Prompt for the critic to score passage relevance, support, and utility
 CRITIC_SCORE_PROMPT = """
 You are a critic evaluating an AI's answer against a source passage. Score the answer on three criteria:
@@ -88,7 +86,6 @@ Provide only a JSON object with your scores and optional brief notes. Example:
   "notes": "Passage is highly relevant and supports the main claim, but is missing some details."
 }}
 """
-
 
 # Prompt for generating follow-up questions based on the answer and context
 FOLLOW_UP_PROMPT = """

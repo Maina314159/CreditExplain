@@ -2,13 +2,12 @@
 Retrieval component for the self-RAG system.
 """
 
-import numpy as np
-from typing import List, Dict, Any, Optional
 import logging
+from typing import List, Dict, Any, Optional
 
-# LangChain integration
-from langchain_huggingface.embeddings import HuggingFaceEmbeddings
+import numpy as np
 from langchain_chroma import Chroma
+from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -89,18 +88,14 @@ class LangChainEmbeddingModel:
             return np.array([])
 
 
-# Maintain backward compatibility
-EmbeddingModel = LangChainEmbeddingModel
-
-
 class VectorRetriever:
     """LangChain-based retriever using Chroma vector store."""
 
     def __init__(
-        self,
-        persist_directory: str = VECTORSTORE_DIR,
-        collection_name: str = "creditexplain",
-        embedding_model: Optional[HuggingFaceEmbeddings] = None,
+            self,
+            persist_directory: str = VECTORSTORE_DIR,
+            collection_name: str = "creditexplain",
+            embedding_model: Optional[HuggingFaceEmbeddings] = None,
     ):
         """
         Initialize the Chroma retriever using LangChain.
@@ -135,10 +130,10 @@ class VectorRetriever:
         )
 
     def retrieve(
-        self,
-        query_embedding: List[float],
-        k: int = 50,
-        filter_dict: Optional[Dict] = None,
+            self,
+            query_embedding: List[float],
+            k: int = 50,
+            filter_dict: Optional[Dict] = None,
     ) -> List[Dict[str, Any]]:
         """
         Retrieve documents using LangChain's similarity_search_by_vector.
@@ -155,7 +150,6 @@ class VectorRetriever:
             # Convert filter_dict to LangChain's expected format
             langchain_filter = None
             if filter_dict:
-                # LangChain expects a different filter format
                 langchain_filter = {
                     "$and": [{k: {"$eq": v}} for k, v in filter_dict.items()]
                 }
@@ -164,10 +158,10 @@ class VectorRetriever:
             results = self.vector_store.similarity_search_by_vector(
                 embedding=query_embedding,
                 k=min(k, 100),
-                filter=langchain_filter,  # Use the converted filter
+                filter=langchain_filter,
             )
 
-            # Convert to your expected format
+            # Convert to expected format
             items = []
             for doc in results:
                 items.append(
@@ -184,11 +178,10 @@ class VectorRetriever:
 
         except Exception as e:
             logger.error(f"Retrieval failed: {e}")
-            return []  # Ensure this returns empty list on error
+            return []
 
-    # Add method for text-based retrieval (optional)
     def retrieve_by_text(
-        self, query: str, k: int = 50, filter_dict: Optional[Dict] = None
+            self, query: str, k: int = 50, filter_dict: Optional[Dict] = None
     ) -> List[Dict[str, Any]]:
         """
         Retrieve documents using query text (convenience method).
@@ -214,24 +207,3 @@ class VectorRetriever:
         except Exception as e:
             logger.error(f"Text retrieval failed: {e}")
             return []
-
-
-# Example usage
-if __name__ == "__main__":
-    # Initialize the embedding model
-    embed_model = LangChainEmbeddingModel(
-        model_name="sentence-transformers/all-MiniLM-L6-v2",
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True},
-    )
-
-    # Initialize the retriever
-    retriever = VectorRetriever()
-
-    # Example query
-    query = "What are the capital requirements for banks?"
-    results = get_topk_for_query(query, embed_model, retriever, k=10)
-
-    print(f"Found {len(results)} results for query: {query}")
-    for i, result in enumerate(results[:3]):  # Show first 3 results
-        print(f"Result {i+1}: {result['doc_text'][:100]}...")

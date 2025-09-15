@@ -5,20 +5,21 @@ Handles PDFs, JSON, CSV, and other regulatory documents.
 """
 
 import logging
-from pathlib import Path
-from typing import List, Dict, Any, Optional
 from datetime import datetime
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Union
 
-# LangChain imports
+import pandas as pd
 from langchain_community.document_loaders import (
-    PyPDFLoader,
+    DirectoryLoader,
+    UnstructuredPDFLoader,
     JSONLoader,
     CSVLoader,
     UnstructuredFileLoader,
 )
-from langchain_community.document_loaders import DirectoryLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pandas import DataFrame
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -50,10 +51,10 @@ class CreditDocumentLoader:
         )
 
     def load_pdf_documents(
-        self, file_path: str, extract_metadata: bool = True
+            self, file_path: str, extract_metadata: bool = True
     ) -> List[Document]:
         """
-        Load and chunk PDF documents using LangChain's PyPDFLoader.
+        Load and chunk PDF documents using LangChain's UnstructuredPDFLoader.
 
         Args:
             file_path: Path to PDF file or directory
@@ -68,11 +69,11 @@ class CreditDocumentLoader:
                 loader = DirectoryLoader(
                     str(path),
                     glob="**/*.pdf",
-                    loader_cls=PyPDFLoader,
+                    loader_cls=UnstructuredPDFLoader,
                     use_multithreading=True,
                 )
             else:
-                loader = PyPDFLoader(str(path))
+                loader = UnstructuredPDFLoader(str(path))
 
             documents = loader.load()
 
@@ -93,7 +94,7 @@ class CreditDocumentLoader:
             raise
 
     def load_json_rules(
-        self, file_path: str, jq_schema: str = ".", content_key: str = "text"
+            self, file_path: str, jq_schema: str = ".",
     ) -> List[Document]:
         """
         Load JSON rules with structured metadata using LangChain's JSONLoader.
@@ -130,7 +131,7 @@ class CreditDocumentLoader:
             raise
 
     def _extract_json_metadata(
-        self, record: Dict[str, Any], metadata: Dict[str, Any]
+            self, record: Dict[str, Any], metadata: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         Extract metadata from JSON records for compliance documents.
@@ -167,7 +168,7 @@ class CreditDocumentLoader:
         return metadata_extracted
 
     def load_csv_data(
-        self, file_path: str, source_column: Optional[str] = None
+            self, file_path: str, source_column: Optional[str] = None
     ) -> List[Document]:
         """
         Load CSV data for borrower information or reference data.
@@ -183,7 +184,7 @@ class CreditDocumentLoader:
             loader = CSVLoader(
                 file_path=file_path,
                 source_column=source_column,
-                metadata_func=self._extract_csv_metadata,
+                metadata_columns=["all"],
             )
 
             documents = loader.load()
@@ -202,7 +203,7 @@ class CreditDocumentLoader:
             raise
 
     def _extract_csv_metadata(
-        self, record: Dict[str, Any], metadata: Dict[str, Any]
+            self, record: Dict[str, Any], metadata: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         Extract metadata from CSV records.
@@ -228,7 +229,7 @@ class CreditDocumentLoader:
         return metadata_extracted
 
     def load_documents(
-        self, file_path: str, doc_type: Optional[str] = None
+            self, file_path: str, doc_type: Optional[str] = None
     ) -> List[Document]:
         """
         Universal document loader that auto-detects file type.
@@ -306,7 +307,7 @@ def load_rules(file_path: str) -> List[Dict[str, Any]]:
     ]
 
 
-def load_borrowers(file_path: str, as_dicts: bool = True) -> List[Dict[str, Any]]:
+def load_borrowers(file_path: str, as_dicts: bool = True) -> Union[List[Dict[str, Any]], DataFrame]:
     """Backward compatible borrower loading."""
     loader = CreditDocumentLoader()
     documents = loader.load_csv_data(file_path)
@@ -321,9 +322,6 @@ def load_borrowers(file_path: str, as_dicts: bool = True) -> List[Dict[str, Any]
             for i, doc in enumerate(documents)
         ]
     else:
-        # Return as pandas DataFrame (would need additional processing)
-        import pandas as pd
-
         records = []
         for doc in documents:
             record = doc.metadata.copy()

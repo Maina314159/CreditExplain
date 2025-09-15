@@ -5,11 +5,12 @@ Preserves semantic structure and compliance metadata for CreditExplain RAG.
 
 import logging
 from typing import List, Dict, Any
+
+from langchain_core.documents import Document
 from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
     SentenceTransformersTokenTextSplitter,
 )
-from langchain_core.documents import Document
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -22,10 +23,10 @@ class RegulatoryChunker:
     """Advanced chunker for regulatory documents with semantic awareness."""
 
     def __init__(
-        self,
-        chunk_size: int = 1000,
-        chunk_overlap: int = 200,
-        model_name: str = SENTENCE_TRANSFORMER_MODEL,
+            self,
+            chunk_size: int = 1000,
+            chunk_overlap: int = 200,
+            model_name: str = SENTENCE_TRANSFORMER_MODEL,
     ):
         """
         Initialize the regulatory document chunker.
@@ -56,7 +57,7 @@ class RegulatoryChunker:
         logger.info(f"Initialized RegulatoryChunker with chunk_size={chunk_size}")
 
     def chunk_documents(
-        self, documents: List[Document], strategy: str = "recursive"
+            self, documents: List[Document], strategy: str = "recursive"
     ) -> List[Document]:
         """
         Chunk LangChain Documents with regulatory-aware strategies.
@@ -126,7 +127,7 @@ class RegulatoryChunker:
         return custom_splitter.split_documents([document])
 
     def _enhance_regulatory_chunks(
-        self, chunks: List[Document], original_metadata: Dict[str, Any]
+            self, chunks: List[Document], original_metadata: Dict[str, Any]
     ) -> List[Document]:
         """
         Enhance chunks with regulatory-specific metadata and provenance.
@@ -170,16 +171,17 @@ class RegulatoryChunker:
 
         return enhanced_chunks
 
-    def _determine_chunk_type(self, text: str) -> str:
+    @staticmethod
+    def _determine_chunk_type(text: str) -> str:
         """Determine the type of regulatory content in the chunk."""
         text_lower = text.lower()
 
         if any(
-            keyword in text_lower for keyword in ["definition", "means", "shall mean"]
+                keyword in text_lower for keyword in ["definition", "means", "shall mean"]
         ):
             return "definition"
         elif any(
-            keyword in text_lower for keyword in ["prohibit", "must not", "shall not"]
+                keyword in text_lower for keyword in ["prohibit", "must not", "shall not"]
         ):
             return "prohibition"
         elif any(keyword in text_lower for keyword in ["require", "must", "shall"]):
@@ -187,14 +189,15 @@ class RegulatoryChunker:
         elif any(keyword in text_lower for keyword in ["penalty", "fine", "sanction"]):
             return "enforcement"
         elif any(
-            keyword in text_lower
-            for keyword in ["exception", "provided that", "unless"]
+                keyword in text_lower
+                for keyword in ["exception", "provided that", "unless"]
         ):
             return "exception"
         else:
             return "general"
 
-    def _extract_regulatory_sections(self, text: str) -> Dict[str, Any]:
+    @staticmethod
+    def _extract_regulatory_sections(text: str) -> Dict[str, Any]:
         """Extract regulatory section information from chunk text."""
         # Simple pattern matching for regulatory document structure
         lines = text.split("\n")
@@ -250,7 +253,6 @@ class RegulatoryChunker:
         return chunks
 
 
-# Maintain backward compatibility
 def chunk_rules(rules, chunk_size=1000, chunk_overlap=200):
     """Backward compatible chunk_rules function."""
     chunker = RegulatoryChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
@@ -273,7 +275,7 @@ if __name__ == "__main__":
     # Test the chunker
     chunker = RegulatoryChunker(chunk_size=500, chunk_overlap=50)
 
-    # Method 1: New LangChain way
+    # Method 1: LangChain way
     documents = [
         Document(page_content=rule["text"], metadata=rule) for rule in sample_rules
     ]
@@ -281,7 +283,7 @@ if __name__ == "__main__":
 
     print(f"Chunked into {len(chunks)} chunks:")
     for i, chunk in enumerate(chunks):
-        print(f"Chunk {i+1}: {chunk.metadata.get('chunk_type', 'unknown')}")
+        print(f"Chunk {i + 1}: {chunk.metadata.get('chunk_type', 'unknown')}")
         print(f"Content: {chunk.page_content[:100]}...")
         print("---")
 
