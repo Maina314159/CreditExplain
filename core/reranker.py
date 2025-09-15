@@ -5,12 +5,13 @@ Uses cross-encoder model to re-rank retrieved passages by query relevance.
 
 import logging
 from typing import List, Dict, Tuple, Optional
-from langchain_core.documents import Document
+
 from langchain.retrievers import ContextualCompressionRetriever
-from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from langchain.retrievers.document_compressors import CrossEncoderReranker
-from langchain.retrievers.ensemble import EnsembleRetriever
 from langchain.retrievers.document_compressors.base import DocumentCompressorPipeline
+from langchain.retrievers.ensemble import EnsembleRetriever
+from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+from langchain_core.documents import Document
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -23,7 +24,7 @@ class LangChainReranker:
     """LangChain-compatible cross-encoder reranker."""
 
     def __init__(
-        self, model_name: str = RERANKER_MODEL, top_n: int = 6, device: str = "cpu"
+            self, model_name: str = RERANKER_MODEL, top_n: int = 6, device: str = "cpu"
     ):
         """
         Initialize the LangChain cross-encoder reranker.
@@ -52,13 +53,12 @@ class LangChainReranker:
             logger.error(f"Failed to load LangChain reranker {model_name}: {e}")
             self.compressor = None
 
-    def invoke(self, input_dict: Dict, config: Optional[Dict] = None) -> Dict:
+    def invoke(self, input_dict: Dict) -> Dict:
         """
         LangChain compatible invoke method for reranking.
 
         Args:
             input_dict: Dictionary with 'query' and 'documents' keys
-            config: Optional configuration
 
         Returns:
             Dictionary with reranked documents and scores
@@ -95,7 +95,7 @@ class LangChainReranker:
             }
 
     def rerank(
-        self, query: str, candidates: List[Dict], top_n: Optional[int] = None
+            self, query: str, candidates: List[Dict], top_n: Optional[int] = None
     ) -> Tuple[List[Dict], List[float]]:
         """
         Original rerank method maintained for backward compatibility.
@@ -150,9 +150,10 @@ class ContextualCompressionRetrieverWrapper:
     """Wrapper for LangChain's ContextualCompressionRetriever for easy integration."""
 
     def __init__(
-        self,
-        base_retriever,
-        reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+            self,
+            base_retriever,
+            reranker_model: str = RERANKER_MODEL,
+            device: str = "cpu",
     ):
         """
         Initialize contextual compression retriever with reranking.
@@ -161,7 +162,13 @@ class ContextualCompressionRetrieverWrapper:
             base_retriever: Base retriever (vector, BM25, or ensemble)
             reranker_model: Cross-encoder model name for reranking
         """
-        self.reranker = CrossEncoderReranker(model=reranker_model)
+        # Create the cross-encoder model instance first
+        cross_encoder = HuggingFaceCrossEncoder(
+            model_name=reranker_model,
+            model_kwargs={"device": device}
+        )
+        # Pass the instance to CrossEncoderReranker
+        self.reranker = CrossEncoderReranker(model=cross_encoder)
         self.compression_pipeline = DocumentCompressorPipeline(
             transformers=[self.reranker]
         )
@@ -228,17 +235,14 @@ def create_advanced_retriever(retriever_type: str = "vector", **kwargs):
         raise ValueError(f"Unknown retriever type: {retriever_type}")
 
 
-# Maintain backward compatibility
-Reranker = LangChainReranker
-
 # Example usage
 if __name__ == "__main__":
     # Initialize the reranker
     reranker = LangChainReranker(
-        model_name="cross-encoder/ms-marco-MiniLM-L-6-v2", top_n=6
+        model_name=RERANKER_MODEL, top_n=6
     )
 
-    # Example usage
+    # Example query with candidates
     query = "What are the capital requirements for banks?"
     candidates = [
         {
@@ -260,4 +264,4 @@ if __name__ == "__main__":
 
     print(f"Reranked {len(candidates)} candidates:")
     for i, (candidate, score) in enumerate(zip(reranked, scores)):
-        print(f"{i+1}. Score: {score:.3f} - {candidate['doc_text'][:50]}...")
+        print(f"{i + 1}. Score: {score:.3f} - {candidate['doc_text'][:50]}...")

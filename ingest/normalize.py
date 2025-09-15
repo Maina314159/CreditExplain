@@ -3,9 +3,10 @@ Enhanced normalization for CreditExplain RAG system.
 Comprehensive PII redaction and regulatory document normalization.
 """
 
-import re
 import logging
+import re
 from typing import List, Dict, Any
+
 from langchain_core.documents import Document
 
 # Set up logging
@@ -61,9 +62,9 @@ REGULATORY_PATTERNS = {
     ],
 }
 
-# Terms that should NEVER be redacted (regulatory content)
+# Terms that should never be redacted (regulatory content)
 REGULATORY_WHITELIST = [
-    r"basel\s+[iI]+",  # Basel I, II, III
+    r"basel\s+[iI]+",
     r"section\s+\d+",
     r"article\s+\d+",
     r"clause\s+\d+",
@@ -80,7 +81,7 @@ REGULATORY_WHITELIST = [
 
 
 def normalize_text(
-    text: str, redact_pii: bool = True, normalize_regulatory: bool = True
+        text: str, redact_pii: bool = True, normalize_regulatory: bool = True
 ) -> str:
     """
     Enhanced text normalization with comprehensive PII redaction and regulatory formatting.

@@ -4,18 +4,17 @@ Uses open-source models via Groq for retrieval decisions and answer scoring.
 Implements LangChain runnables for better integration and reliability.
 """
 
-import os
-import json
 import logging
-from typing import Dict, Optional, List
-from dataclasses import dataclass
+import os
+from abc import abstractmethod, ABC
+from dataclasses import dataclass, fields
+from typing import Dict, Optional, List, Set
 
-from langchain_groq import ChatGroq
-from langchain_ollama import ChatOllama
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.runnables import RunnableSerializable
 from langchain_core.exceptions import OutputParserException
+from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableSerializable
+from langchain_groq import ChatGroq
 
 from core.prompts import CRITIC_RETRIEVE_PROMPT, CRITIC_SCORE_PROMPT
 
@@ -34,6 +33,7 @@ class CriticConfig:
     temperature: float = 0.0
     max_retries: int = 3
     timeout: int = 30
+    max_tokens: int = 1024
     fallback_retrieve: bool = True
     fallback_scores: Dict[str, float] = None
 
@@ -41,47 +41,40 @@ class CriticConfig:
         if self.fallback_scores is None:
             self.fallback_scores = {"isrel": 0.5, "issup": 0.5, "isuse": 0.5}
 
+    @classmethod
+    def get_field_names(cls) -> Set[str]:
+        return {f.name for f in fields(cls)}
 
-class GroqCritic:
-    """Critic component using open-source models via Groq API."""
+
+class BaseCritic(ABC):
+    """Abstract base class for critic components."""
 
     def __init__(self, config: Optional[CriticConfig] = None):
         """
-        Initialize the Groq-based critic.
+        Initialize the critic component.
 
         Args:
-            config: Critic configuration parameters
+            config: Critic config parameters.
         """
         self.config = config or CriticConfig()
+        self.llm = None
+        self.retrieve_chain = None
+        self.score_chain = None
 
-        # Initialize Groq chat model
-        self.llm = ChatGroq(
-            model_name=self.config.model_name,
-            temperature=self.config.temperature,
-            max_retries=self.config.max_retries,
-            timeout=self.config.timeout,
-            groq_api_key=os.getenv("GROQ_API_KEY"),
-        )
+    @abstractmethod
+    def _initialize_llm(self):
+        """Initialize the language model. Must be implemented by subclasses."""
+        pass
 
-        # Create runnables with LangChain
-        self.retrieve_chain = self._create_retrieve_chain()
-        self.score_chain = self._create_score_chain()
-
-        logger.info(f"GroqCritic initialized with model: {self.config.model_name}")
-
+    @abstractmethod
     def _create_retrieve_chain(self) -> RunnableSerializable:
         """Create LangChain runnable for retrieval decision."""
-        prompt = ChatPromptTemplate.from_template(CRITIC_RETRIEVE_PROMPT)
-        parser = JsonOutputParser()
+        pass
 
-        return prompt | self.llm | parser
-
+    @abstractmethod
     def _create_score_chain(self) -> RunnableSerializable:
         """Create LangChain runnable for answer scoring."""
-        prompt = ChatPromptTemplate.from_template(CRITIC_SCORE_PROMPT)
-        parser = JsonOutputParser()
-
-        return prompt | self.llm | parser
+        pass
 
     def decide_retrieve(self, query: str) -> Dict:
         """
@@ -229,36 +222,88 @@ class GroqCritic:
         return scored_candidates
 
 
-# Alternative implementation using a local model via Ollama
-class OllamaCritic:
+class GroqCritic(BaseCritic):
+    """Critic component using open-source models via Groq API."""
+
+    def __init__(self, config: Optional[CriticConfig] = None):
+        """
+        Initialize the Groq-based critic.
+
+        Args:
+            config: Critic configuration parameters
+        """
+        super().__init__(config)
+        self._initialize_llm()
+        self.retrieve_chain = self._create_retrieve_chain()
+        self.score_chain = self._create_score_chain()
+        self.config = config or CriticConfig()
+
+        logger.info(f"GroqCritic initialized with model: {self.config.model_name}")
+
+    def _initialize_llm(self):
+        """Initialize the Groq chat model."""
+        self.llm = ChatGroq(
+            model=self.config.model_name,
+            temperature=self.config.temperature,
+            max_retries=self.config.max_retries,
+            timeout=self.config.timeout,
+            api_key=os.getenv("GROQ_API_KEY"),
+        )
+
+    def _create_retrieve_chain(self) -> RunnableSerializable:
+        """Create LangChain runnable for retrieval decision."""
+        prompt = ChatPromptTemplate.from_template(CRITIC_RETRIEVE_PROMPT)
+        parser = JsonOutputParser()
+
+        return prompt | self.llm | parser
+
+    def _create_score_chain(self) -> RunnableSerializable:
+        """Create LangChain runnable for answer scoring."""
+        prompt = ChatPromptTemplate.from_template(CRITIC_SCORE_PROMPT)
+        parser = JsonOutputParser()
+
+        return prompt | self.llm | parser
+
+
+class OllamaCritic(BaseCritic):
     """Critic component using local models via Ollama."""
 
-    def __init__(
-        self, model_name: str = "llama3.1:8b", base_url: str = "http://localhost:11434"
-    ):
+    def __init__(self, config: Optional[CriticConfig] = None, base_url: str = "http://localhost:11434"):
         """
         Initialize the Ollama-based critic for offline use.
 
         Args:
-            model_name: Ollama model name
+            config: Ollama model name
             base_url: Ollama server URL
         """
+        # Override config with Ollama-specific defaults if not provided
+        ollama_config = config or CriticConfig(
+            model_name="llama3.1:8b",
+            max_tokens=1024
+        )
+        super().__init__(ollama_config)
+        self.base_url = base_url
+        self._initialize_llm()
+        self.retrieve_chain = self._create_retrieve_chain()
+        self.score_chain = self._create_score_chain()
+
+        logger.info(f"OllamaCritic initialized with model: {self.config.model_name}")
+
+    def _initialize_llm(self):
+        """Initialize the Ollama language model."""
         try:
-            self.llm = ChatOllama(model=model_name, temperature=0.0, base_url=base_url)
-
-            self.retrieve_chain = self._create_retrieve_chain()
-            self.score_chain = self._create_score_chain()
-
-            logger.info(f"OllamaCritic initialized with model: {model_name}")
-
+            from langchain_ollama import ChatOllama
         except ImportError:
             logger.error(
                 "langchain-ollama not installed. Please install with: pip install langchain-ollama"
             )
             raise
-        except Exception as e:
-            logger.error(f"Failed to initialize Ollama critic: {e}")
-            raise
+
+        self.llm = ChatOllama(
+            model=self.config.model_name,
+            temperature=self.config.temperature,
+            base_url=self.base_url
+        )
 
     def _create_retrieve_chain(self):
         """Create retrieval decision chain for Ollama."""
@@ -274,13 +319,63 @@ class OllamaCritic:
 
         return prompt | self.llm | parser
 
-    # Methods would be similar to GroqCritic but with Ollama-specific error handling
-    decide_retrieve = GroqCritic.decide_retrieve
-    score_candidate = GroqCritic.score_candidate
+
+class CriticFactory:
+    """Factory class for creating critic instances."""
+
+    _registry = {
+        "groq": GroqCritic,
+        "ollama": OllamaCritic,
+    }
+
+    @classmethod
+    def create_critic(cls, critic_type: str = "groq", **kwargs) -> BaseCritic:
+        """
+        Factory method to create critic instances.
+
+        Args:
+            critic_type: Type of critic to create ('groq' or 'ollama')
+            **kwargs: Additional arguments for critic configuration
+
+        Returns:
+            Configured critic instance
+        """
+        critic_type = critic_type.lower()
+
+        if critic_type not in cls._registry:
+            raise ValueError(
+                f"Unknown critic type: {critic_type}. "
+                f"Available types: {list(cls._registry.keys())}"
+            )
+
+        # Get the field names from the dataclass
+        config_field_names = CriticConfig.get_field_names()
+
+        # Extract config parameters if provided
+        config_params = {k: v for k, v in kwargs.items()
+                         if k in config_field_names}
+
+        # Create config if any parameters provided
+        config = CriticConfig(**config_params) if config_params else None
+
+        # Extract non-config parameters
+        other_params = {k: v for k, v in kwargs.items()
+                        if k not in config_field_names}
+
+        critic_class = cls._registry[critic_type]
+
+        if config and other_params:
+            return critic_class(config=config, **other_params)
+        elif config:
+            return critic_class(config=config)
+        elif other_params:
+            return critic_class(**other_params)
+        else:
+            return critic_class()
 
 
-# Factory function for creating critics
-def create_critic(critic_type: str = "groq", **kwargs):
+# Convenience function for backward compatibility
+def create_critic(critic_type: str = "groq", **kwargs) -> BaseCritic:
     """
     Factory function to create critic instances.
 
@@ -291,12 +386,4 @@ def create_critic(critic_type: str = "groq", **kwargs):
     Returns:
         Configured critic instance
     """
-    if critic_type.lower() == "groq":
-        config = CriticConfig(**kwargs)
-        return GroqCritic(config)
-
-    elif critic_type.lower() == "ollama":
-        return OllamaCritic(**kwargs)
-
-    else:
-        raise ValueError(f"Unknown critic type: {critic_type}. Use 'groq' or 'ollama'.")
+    return CriticFactory.create_critic(critic_type, **kwargs)

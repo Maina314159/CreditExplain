@@ -3,17 +3,18 @@ Agentic Self-RAG System for Credit Compliance Explanation.
 Uses LangChain for orchestration and follows SELF-RAG principles.
 """
 
+import logging
 import time
 import uuid
-from dotenv import load_dotenv
-import logging
 from typing import List, Dict, Optional
 
-from core.retrieval import LangChainEmbeddingModel as EmbeddingModel, VectorRetriever
-from core.reranker import LangChainReranker as Reranker
+from dotenv import load_dotenv
+
+from core.critic import GroqCritic as Critic
 from core.generator import GroqGenerator as Generator
-from core.critic import GroqCritic
 from core.provenance import ProvenanceLogger, AuditConfig
+from core.reranker import LangChainReranker as Reranker
+from core.retrieval import LangChainEmbeddingModel as EmbeddingModel, VectorRetriever
 
 load_dotenv()
 
@@ -29,15 +30,15 @@ class SelfRAG:
     """Agentic RAG system with self-reflection and adaptive retrieval."""
 
     def __init__(
-        self,
-        embed_model: Optional[EmbeddingModel] = None,
-        retriever: Optional[VectorRetriever] = None,
-        reranker: Optional[Reranker] = None,
-        generator: Optional[Generator] = None,
-        critic: Optional[GroqCritic] = None,
-        top_k: int = 50,
-        top_n: int = 6,
-        fully_supported_threshold: float = 0.7,
+            self,
+            embed_model: Optional[EmbeddingModel] = None,
+            retriever: Optional[VectorRetriever] = None,
+            reranker: Optional[Reranker] = None,
+            generator: Optional[Generator] = None,
+            critic: Optional[Critic] = None,
+            top_k: int = 50,
+            top_n: int = 6,
+            fully_supported_threshold: float = 0.7,
     ):
         """
         Initialize the Self-RAG system.
@@ -56,7 +57,7 @@ class SelfRAG:
         self.retriever = retriever or VectorRetriever()
         self.reranker = reranker or Reranker()
         self.generator = generator or Generator()
-        self.critic = critic or GroqCritic()
+        self.critic = critic or Critic()
         self.top_k = top_k
         self.top_n = top_n
         self.fully_supported_threshold = fully_supported_threshold
@@ -81,7 +82,7 @@ class SelfRAG:
         )
 
     def _process_candidate(
-        self, query: str, candidate_passage: Dict, candidate_index: int
+            self, query: str, candidate_passage: Dict, candidate_index: int
     ) -> Optional[Dict]:
         """Process a single candidate passage through generation and scoring."""
         try:
@@ -124,6 +125,7 @@ class SelfRAG:
         """
         run_id = str(uuid.uuid4())
         start_time = time.time()
+        global processing_time
         processing_time = 0
         logger.info(f"Starting Self-RAG processing for query: {query[:100]}...")
 
@@ -170,7 +172,7 @@ class SelfRAG:
             # 2) Embed query and retrieve initial candidates
             logger.info("Retrieving relevant passages...")
             query_embedding = self.embed_model.embed([query])[0]
-            initial_candidates = self.retriever.retrieve(query_embedding, k=self.top_k)
+            initial_candidates = self.retriever.retrieve(query_embedding.tolist(), k=self.top_k)
 
             if not initial_candidates:
                 logger.warning("No passages retrieved from vector store")
@@ -274,7 +276,7 @@ class SelfRAG:
             return self._handle_pipeline_error(run_id, query, e, start_time, case_id)
 
     def _handle_empty_retrieval(
-        self, run_id: str, query: str, start_time: float, case_id: str
+            self, run_id: str, query: str, start_time: float, case_id: str
     ) -> Dict:
         """Handle case where no passages are retrieved."""
         processing_time = time.time() - start_time
@@ -304,14 +306,14 @@ class SelfRAG:
         }
 
     def _handle_insufficient_support(
-        self,
-        run_id: str,
-        query: str,
-        passages: List[Dict],
-        candidates: List[Dict],
-        scores: Dict[str, float],
-        start_time: float,
-        case_id: str,
+            self,
+            run_id: str,
+            query: str,
+            passages: List[Dict],
+            candidates: List[Dict],
+            scores: Dict[str, float],
+            start_time: float,
+            case_id: str,
     ) -> Dict:
         """Handle case where no answer meets the support threshold."""
         processing_time = time.time() - start_time
@@ -343,12 +345,12 @@ class SelfRAG:
         }
 
     def _handle_processing_failure(
-        self,
-        run_id: str,
-        query: str,
-        passages: List[Dict],
-        start_time: float,
-        case_id: str,
+            self,
+            run_id: str,
+            query: str,
+            passages: List[Dict],
+            start_time: float,
+            case_id: str,
     ) -> Dict:
         """Handle case where all candidate processing fails."""
         processing_time = time.time() - start_time
@@ -378,7 +380,7 @@ class SelfRAG:
         }
 
     def _handle_pipeline_error(
-        self, run_id: str, query: str, error: Exception, start_time: float, case_id: str
+            self, run_id: str, query: str, error: Exception, start_time: float, case_id: str
     ) -> Dict:
         """Handle unexpected errors in the pipeline."""
         processing_time = time.time() - start_time
@@ -492,7 +494,7 @@ if __name__ == "__main__":
                 if "follow_up_questions" in answer and answer["follow_up_questions"]:
                     print(f"\n💭 Suggested follow-up questions:")
                     for i, question in enumerate(
-                        answer["follow_up_questions"][:3], 1
+                            answer["follow_up_questions"][:3], 1
                     ):  # Show top 3
                         print(f"   {i}. {question}")
 
