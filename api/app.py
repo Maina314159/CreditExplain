@@ -75,7 +75,6 @@ async def query_endpoint(payload: QueryIn):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Document upload endpoint
 @app.post("/upload")
 async def upload_documents(files: List[UploadFile] = File(...)):
     """
@@ -93,7 +92,6 @@ async def upload_documents(files: List[UploadFile] = File(...)):
     return {"uploaded": saved_files}
 
 
-# List ingested documents endpoint
 @app.get("/documents")
 async def list_documents():
     """
@@ -108,7 +106,6 @@ async def list_documents():
     return {"documents": docs}
 
 
-# Metrics endpoint
 @app.get("/metrics")
 async def get_metrics():
     """
@@ -121,18 +118,6 @@ async def get_metrics():
     return metrics
 
 
-# PII redaction stats endpoint (optional)
-@app.get("/pii-stats")
-async def get_pii_stats():
-    """
-    Return PII redaction statistics.
-    """
-    # Example: Load from a log or DB
-    stats = {"total_redactions": 156, "documents_scanned": 28}
-    return stats
-
-
-# Document metadata endpoint (optional)
 @app.get("/documents/{filename}")
 async def get_document_metadata(filename: str):
     """
@@ -148,8 +133,6 @@ async def get_document_metadata(filename: str):
 
 @app.get("/audit/{run_id}")
 async def get_audit(run_id: str):
-    import os, json
-
     path = f"./audit/audit_{run_id}.json"
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="audit not found")

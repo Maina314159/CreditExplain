@@ -4,16 +4,17 @@ Uses open-source models via Groq for answer generation and follow-up question cr
 Implements LangChain runnables for better integration and reliability.
 """
 
-import os
 import logging
-from typing import List, Dict, Optional
-from dataclasses import dataclass
+import os
+from abc import abstractmethod, ABC
+from dataclasses import dataclass, fields
+from typing import List, Dict, Optional, Set
 
-from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.runnables import RunnableSerializable
 from langchain_core.exceptions import OutputParserException
+from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableSerializable
+from langchain_groq import ChatGroq
 
 from core.prompts import GENERATOR_PROMPT, FOLLOW_UP_PROMPT
 
@@ -36,68 +37,60 @@ class GeneratorConfig:
     max_passage_length: int = 1000
     max_follow_up_questions: int = 5
 
+    @classmethod
+    def get_field_names(cls) -> Set[str]:
+        return {f.name for f in fields(cls)}
 
-class GroqGenerator:
-    """Generator component using open-source models via Groq API."""
+
+class BaseGenerator(ABC):
+    """Abstract base class for generator component implementations."""
 
     def __init__(self, config: Optional[GeneratorConfig] = None):
         """
-        Initialize the Groq-based generator.
+        Initialize the generator component.
 
         Args:
-            config: Generator configuration parameters
+            config: Generator config parameters.
         """
         self.config = config or GeneratorConfig()
+        self.llm = None
+        self.generator_chain = None
+        self.follow_up_chain = None
 
-        # Initialize Groq chat model
-        self.llm = ChatGroq(
-            model_name=self.config.model_name,
-            temperature=self.config.temperature,
-            max_retries=self.config.max_retries,
-            timeout=self.config.timeout,
-            max_tokens=self.config.max_tokens,
-            groq_api_key=os.getenv("GROQ_API_KEY"),
-        )
+    @abstractmethod
+    def _initialize_llm(self):
+        """Initialize the language model. Must be implemented by subclasses."""
+        pass
 
-        # Create runnables with LangChain
-        self.generation_chain = self._create_generation_chain()
-        self.follow_up_chain = self._create_follow_up_chain()
-
-        logger.info(f"GroqGenerator initialized with model: {self.config.model_name}")
-
-    def _create_generation_chain(self) -> RunnableSerializable:
+    @abstractmethod
+    def _create_generator_chain(self) -> RunnableSerializable:
         """Create LangChain runnable for answer generation."""
-        prompt = ChatPromptTemplate.from_template(GENERATOR_PROMPT)
-        parser = JsonOutputParser()
+        pass
 
-        return prompt | self.llm | parser
-
+    @abstractmethod
     def _create_follow_up_chain(self) -> RunnableSerializable:
-        """Create LangChain runnable for follow-up question generation."""
-        prompt = ChatPromptTemplate.from_template(FOLLOW_UP_PROMPT)
-        parser = JsonOutputParser()
-
-        return prompt | self.llm | parser
+        """Create LangChain runnable for generation of follow-up questions."""
+        pass
 
     def _format_passages_block(self, passages: List[Dict]) -> str:
         """
         Format passages into a structured block for the prompt.
 
         Args:
-            passages: List of passage dictionaries
+            passages: List of passage dictionaries.
 
         Returns:
-            Formatted passages block string
+            Formatted passages block string.
         """
         if not passages:
-            return "No relevant passages available."
+            return "No relevant passages avaiilable."
 
         passages_block = ""
         for passage in passages:
             passage_id = passage.get("id", "unknown_id")
             doc_type = passage.get("metadata", {}).get("doc_type", "document")
-            text = passage.get("doc_text", "")[: self.config.max_passage_length]
 
+            text = passage.get("doc_text", "")[: self.config.max_passage_length]
             passages_block += f"[ID: {passage_id} | Type: {doc_type}]\n{text}\n\n"
 
         return passages_block.strip()
@@ -118,7 +111,7 @@ class GroqGenerator:
             passages_block = self._format_passages_block(passages)
 
             # Invoke the generation chain
-            result = self.generation_chain.invoke(
+            result = self.generator_chain.invoke(
                 {"query": query, "passages_block": passages_block}
             )
 
@@ -134,7 +127,7 @@ class GroqGenerator:
             return self._create_fallback_response(query, passages, str(e))
 
     def generate_follow_ups(
-        self, query: str, answer: Dict, passages: List[Dict]
+            self, query: str, answer: Dict, passages: List[Dict]
     ) -> List[str]:
         """
         Generate relevant follow-up questions based on the context.
@@ -166,13 +159,14 @@ class GroqGenerator:
             if isinstance(questions, list) and questions:
                 return questions[: self.config.max_follow_up_questions]
             else:
-                return self._generate_default_follow_ups(query)
+                return self._generate_default_follow_ups()
 
         except Exception as e:
             logger.warning(f"Follow-up generation failed: {e}")
-            return self._generate_default_follow_ups(query)
+            return self._generate_default_follow_ups()
 
-    def _validate_generation_result(self, result: Dict, query: str) -> Dict:
+    @staticmethod
+    def _validate_generation_result(result: Dict, query: str) -> Dict:
         """
         Validate and enhance the generation result.
 
@@ -204,7 +198,7 @@ class GroqGenerator:
         return validated
 
     def _create_fallback_response(
-        self, query: str, passages: List[Dict], error: str
+            self, query: str, passages: List[Dict], error: str
     ) -> Dict:
         """
         Create a fallback response when generation fails.
@@ -220,9 +214,15 @@ class GroqGenerator:
         logger.warning(f"Using fallback response due to error: {error}")
 
         if passages:
-            explanation = f"I found relevant documents but encountered an error processing them for your query: '{query}'. Please try again or rephrase your question."
+            explanation = (
+                f"I found relevant documents but encountered an error processing them for your query: '{query}'."
+                f" Please try again or rephrase your question."
+            )
         else:
-            explanation = f"I couldn't find any relevant documents to answer your question: '{query}'. Please try rephrasing or ensure relevant documents are uploaded."
+            explanation = (
+                f"I couldn't find any relevant documents to answer your question: '{query}'. "
+                f"Please try rephrasing or ensure relevant documents are uploaded."
+            )
 
         return {
             "explanation": explanation,
@@ -233,12 +233,10 @@ class GroqGenerator:
             "passages_used": len(passages),
         }
 
-    def _generate_default_follow_ups(self, query: str) -> List[str]:
+    @staticmethod
+    def _generate_default_follow_ups() -> List[str]:
         """
         Generate default follow-up questions when specialized generation fails.
-
-        Args:
-            query: Original user query
 
         Returns:
             List of generic follow-up questions
@@ -252,7 +250,7 @@ class GroqGenerator:
         ]
 
     def batch_generate(
-        self, queries: List[str], passages_list: List[List[Dict]]
+            self, queries: List[str], passages_list: List[List[Dict]]
     ) -> List[Dict]:
         """
         Generate answers for multiple queries in a batch.
@@ -279,97 +277,156 @@ class GroqGenerator:
         return results
 
 
-# Alternative implementation using a local model via Ollama
-class OllamaGenerator:
-    """Generator component using local models via Ollama."""
+class GroqGenerator(BaseGenerator):
+    """Generator component using open-source models via Groq API."""
 
-    def __init__(
-        self, model_name: str = "llama3.1:8b", base_url: str = "http://localhost:11434"
-    ):
+    def __init__(self, config: Optional[GeneratorConfig] = None):
         """
-        Initialize the Ollama-based generator for offline use.
+        Initialize the Groq-based generator.
 
         Args:
-            model_name: Ollama model name
-            base_url: Ollama server URL
+            config: Generator configuration parameters
         """
-        try:
-            from langchain_ollama import ChatOllama
+        super().__init__(config)
+        self._initialize_llm()
+        self.generator_chain = self._create_generator_chain()
+        self.follow_up_chain = self._create_follow_up_chain()
+        self.config = config or GeneratorConfig()
 
-            self.llm = ChatOllama(
-                model=model_name,
-                temperature=0.0,
-                base_url=base_url,
-                num_predict=1024,  # Equivalent to max_tokens
-            )
+        logger.info(f"GroqGenerator initialized with model: {self.config.model_name}")
 
-            self.generation_chain = self._create_generation_chain()
-            self.follow_up_chain = self._create_follow_up_chain()
+    def _initialize_llm(self):
+        """Initialize the Groq language model."""
+        self.llm = ChatGroq(
+            model=self.config.model_name,
+            temperature=self.config.temperature,
+            max_retries=self.config.max_retries,
+            timeout=self.config.timeout,
+            max_tokens=self.config.max_tokens,
+            api_key=os.getenv("GROQ_API_KEY"),
+        )
 
-            logger.info(f"OllamaGenerator initialized with model: {model_name}")
-
-        except ImportError:
-            logger.error(
-                "langchain-ollama not installed. Please install with: pip install langchain-ollama"
-            )
-            raise
-        except Exception as e:
-            logger.error(f"Failed to initialize Ollama generator: {e}")
-            raise
-
-    def _create_generation_chain(self):
-        """Create generation chain for Ollama."""
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain_core.output_parsers import JsonOutputParser
-
+    def _create_generator_chain(self) -> RunnableSerializable:
+        """Create LangChain runnable for answer generation."""
         prompt = ChatPromptTemplate.from_template(GENERATOR_PROMPT)
         parser = JsonOutputParser()
 
         return prompt | self.llm | parser
 
-    def _create_follow_up_chain(self):
-        """Create follow-up chain for Ollama."""
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain_core.output_parsers import JsonOutputParser
-
+    def _create_follow_up_chain(self) -> RunnableSerializable:
+        """Create LangChain runnable for follow-up question generation."""
         prompt = ChatPromptTemplate.from_template(FOLLOW_UP_PROMPT)
         parser = JsonOutputParser()
 
         return prompt | self.llm | parser
 
-    # Reuse methods from GroqGenerator
-    _format_passages_block = GroqGenerator._format_passages_block
-    generate_from_passages = GroqGenerator.generate_from_passages
-    generate_follow_ups = GroqGenerator.generate_follow_ups
-    _validate_generation_result = GroqGenerator._validate_generation_result
-    _create_fallback_response = GroqGenerator._create_fallback_response
-    _generate_default_follow_ups = GroqGenerator._generate_default_follow_ups
 
+class OllamaGenerator(BaseGenerator):
+    """Generator component using local models via Ollama."""
 
-# Factory function for creating generators
-def create_generator(generator_type: str = "groq", **kwargs):
-    """
-    Factory function to create generator instances.
+    def __init__(self, config: Optional[GeneratorConfig] = None, base_url: str = "http://localhost:11434"):
+        """
+        Initialize the Ollama-based generator for offline use.
 
-    Args:
-        generator_type: Type of generator to create ('groq' or 'ollama')
-        **kwargs: Additional arguments for generator configuration
-
-    Returns:
-        Configured generator instance
-    """
-    if generator_type.lower() == "groq":
-        config = GeneratorConfig(**kwargs)
-        return GroqGenerator(config)
-
-    elif generator_type.lower() == "ollama":
-        return OllamaGenerator(**kwargs)
-
-    else:
-        raise ValueError(
-            f"Unknown generator type: {generator_type}. Use 'groq' or 'ollama'."
+        Args:
+            config: Generator configuration parameters
+            base_url: Ollama server URL
+        """
+        # Override config with Ollama-specific defaults if not provided
+        ollama_config = config or GeneratorConfig(
+            model_name="llama3.1:8b",
+            max_tokens=1024
         )
 
+        super().__init__(ollama_config)
+        self.base_url = base_url
+        self._initialize_llm()
+        self.generator_chain = self._create_generator_chain()
+        self.follow_up_chain = self._create_follow_up_chain()
 
-# Maintain backward compatibility
-Generator = GroqGenerator
+        logger.info(f"OllamaGenerator initialized with model: {self.config.model_name}")
+
+    def _initialize_llm(self):
+        """Initialize the Ollama language model."""
+        try:
+            from langchain_ollama import ChatOllama
+        except ImportError:
+            logger.error(
+                "langchain-ollama not installed. Please install with: pip install langchain-ollama"
+            )
+            raise
+
+        self.llm = ChatOllama(
+            model=self.config.model_name,
+            temperature=self.config.temperature,
+            base_url=self.base_url,
+            num_predict=self.config.max_tokens,
+        )
+
+    def _create_generator_chain(self) -> RunnableSerializable:
+        """Create LangChain runnable for answer generation."""
+        prompt = ChatPromptTemplate.from_template(GENERATOR_PROMPT)
+        parser = JsonOutputParser()
+
+        return prompt | self.llm | parser
+
+    def _create_follow_up_chain(self) -> RunnableSerializable:
+        """Create LangChain runnable for follow-up question generation."""
+        prompt = ChatPromptTemplate.from_template(FOLLOW_UP_PROMPT)
+        parser = JsonOutputParser()
+
+        return prompt | self.llm | parser
+
+
+class GeneratorFactory:
+    """Factory class for creating generator instances."""
+
+    _registry = {
+        "groq": GroqGenerator,
+        "ollama": OllamaGenerator,
+    }
+
+    @classmethod
+    def create_generator(cls, generator_type: str = "groq", **kwargs) -> BaseGenerator:
+        """
+        Factory method to create generator instances.
+
+        Args:
+            generator_type: Type of generator to create ('groq' or 'ollama')
+            **kwargs: Additional arguments for generator configuration
+
+        Returns:
+            Configured generator instance
+        """
+        generator_type = generator_type.lower()
+
+        if generator_type not in cls._registry:
+            raise ValueError(
+                f"Unknown generator type: {generator_type}. "
+                f"Available types: {list(cls._registry.keys())}"
+            )
+
+        # Get the field names from the dataclass
+        config_field_names = GeneratorConfig.get_field_names()
+
+        # Extract config parameters if provided
+        config_params = {k: v for k, v in kwargs.items()
+                         if k in config_field_names}
+
+        # Create config if any parameters provided
+        config = GeneratorConfig(**config_params) if config_params else None
+
+        # Extract non-config parameters
+        other_params = {k: v for k, v in kwargs.items()
+                        if k not in config_field_names}
+
+        generator_class = cls._registry[generator_type]
+
+        if config and other_params:
+            return generator_class(config=config, **other_params)
+        elif config:
+            return generator_class(config=config)
+        elif other_params:
+            return generator_class(**other_params)
+        else:
+            return generator_class()

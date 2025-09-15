@@ -3,13 +3,14 @@ Provenance and audit logging for Self-RAG system.
 Captures full agentic loop for compliance and evaluation.
 """
 
-import os
 import json
-import time
 import logging
-from typing import Any, Dict, List, Optional
-from datetime import datetime
+import os
+import time
 from dataclasses import dataclass, asdict
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 import aiofiles
 from langchain_core.callbacks import BaseCallbackHandler
 
@@ -27,7 +28,7 @@ class AuditConfig:
     audit_dir: str = AUDIT_DIR
     max_file_size_mb: int = 10  # Rotate files after this size
     use_async: bool = True  # Use async file operations
-    log_to_console: bool = False  # Also log to console for demo
+    log_to_console: bool = False  # Log to console
 
 
 @dataclass
@@ -53,7 +54,7 @@ class AuditRecord:
     case_id: Optional[str]
     query: str
 
-    # Agentic decisionmaking
+    # Agentic decision-making
     retrieval_decision: Dict[str, Any]  # Critic's decision
     retrieval_performed: bool
 
@@ -110,15 +111,15 @@ class ProvenanceLogger:
         except Exception as e:
             logger.error(f"Sync audit write failed: {e}")
 
+    @staticmethod
     def create_audit_record(
-        self,
-        run_id: str,
-        query: str,
-        top_candidates: List[Dict],
-        result: Dict[str, Any],
-        provenance_meta: Dict[str, Any],
-        latency_s: float,
-        case_id: Optional[str] = None,
+            run_id: str,
+            query: str,
+            top_candidates: List[Dict],
+            result: Dict[str, Any],
+            provenance_meta: Dict[str, Any],
+            latency_s: float,
+            case_id: Optional[str] = None,
     ) -> AuditRecord:
         """Create a structured audit record from SELF-RAG execution."""
 
@@ -162,14 +163,14 @@ class ProvenanceLogger:
         )
 
     async def write_audit_async(
-        self,
-        run_id: str,
-        query: str,
-        top_candidates: List[Dict],
-        result: Dict[str, Any],
-        provenance_meta: Dict[str, Any],
-        latency_s: float,
-        case_id: Optional[str] = None,
+            self,
+            run_id: str,
+            query: str,
+            top_candidates: List[Dict],
+            result: Dict[str, Any],
+            provenance_meta: Dict[str, Any],
+            latency_s: float,
+            case_id: Optional[str] = None,
     ) -> str:
         """Async version of audit writing."""
         audit_record = self.create_audit_record(
@@ -185,14 +186,14 @@ class ProvenanceLogger:
         return self.current_file
 
     def write_audit(
-        self,
-        run_id: str,
-        query: str,
-        top_candidates: List[Dict],
-        result: Dict[str, Any],
-        provenance_meta: Dict[str, Any],
-        latency_s: float,
-        case_id: Optional[str] = None,
+            self,
+            run_id: str,
+            query: str,
+            top_candidates: List[Dict],
+            result: Dict[str, Any],
+            provenance_meta: Dict[str, Any],
+            latency_s: float,
+            case_id: Optional[str] = None,
     ) -> str:
         """Sync version for backward compatibility."""
         audit_record = self.create_audit_record(
@@ -208,7 +209,6 @@ class ProvenanceLogger:
         return self.current_file
 
 
-# LangChain Callback Handler for integration
 class ProvenanceCallbackHandler(BaseCallbackHandler):
     """LangChain callback handler for provenance logging."""
 
@@ -217,7 +217,7 @@ class ProvenanceCallbackHandler(BaseCallbackHandler):
         self.start_time = None
 
     def on_chain_start(
-        self, serialized: Dict[str, Any], inputs: Dict[str, Any], **kwargs
+            self, serialized: Dict[str, Any], inputs: Dict[str, Any], **kwargs
     ):
         """Record start time for latency calculation."""
         self.start_time = time.time()
@@ -227,21 +227,4 @@ class ProvenanceCallbackHandler(BaseCallbackHandler):
         if self.start_time:
             latency_s = time.time() - self.start_time
             # Extract audit data from outputs and log
-            # This would be customized based on your chain structure
-
-
-# Maintain backward compatibility
-def write_audit(
-    run_id: str,
-    query: str,
-    top_candidates: list,
-    result: Any,
-    provenance_meta: dict,
-    latency_s: float,
-    case_id: str = None,
-) -> str:
-    """Backward compatible function."""
-    logger = ProvenanceLogger()
-    return logger.write_audit(
-        run_id, query, top_candidates, result, provenance_meta, latency_s, case_id
-    )
+            # This would be customized based on the chain structure
