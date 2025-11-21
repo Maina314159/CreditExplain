@@ -2,7 +2,7 @@
 
 **Evidence-backed, auditable explanations for credit decisions — with citations, PII-safety, and regulator-ready audit trails.**
 
-Built for the **NSK.AI RAG Hackathon 2025**, CreditExplain RAG helps **compliance officers and analysts** quickly answer:
+CreditExplain RAG helps **compliance officers and analysts** quickly answer:
 
 * *"Why was this loan declined?"*
 * *"Which clause justifies KYC step X?"*
@@ -279,7 +279,6 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 <div align="center">
 
-**Built with ❤️ for the NSK.AI RAG Hackathon 2025**
 
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://choosealicense.com/licenses/mit/)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/)
