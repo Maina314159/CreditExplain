@@ -36,6 +36,25 @@ Our solution provides:
 - **PII Protection**: Automatic redaction of sensitive personal information
 - **Multi-jurisdictional Support**: Handling of Nigerian, Kenyan, and global financial regulations
 
+## Some Background as to how this project promotes Responsible/Ethical use of AI
+
+### AI in Credit Scoring & Loan Approval
+
+**1. Description and Purpose**
+Banks and fintechs use AI models to assess creditworthiness by analyzing transaction history, repayment behavior, mobile data, and alternative data sources. The goal is faster, more accurate lending decisions.
+
+**2. Ethical Risks**
+Bias & Financial Exclusion: Marginalized groups may be unfairly denied credit due to biased data.
+Lack of Explainability: Applicants often don’t understand why loans are rejected.
+Privacy Concerns: Use of alternative data (e.g., phone usage) can be intrusive.
+
+**3. Responsible AI Mitigations**
+This is where CreditExplain comes in!
+
+-Fairness testing across demographics
+-Explainable credit decisions (reason codes)
+-Strict limits on data sources and informed consent.
+
 ## 🛠️ Tech Stack
 
 ### Backend
